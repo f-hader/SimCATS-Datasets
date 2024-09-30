@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simcats-datasets"
+version = "2.4.0" # also change in docs/source/conf.py and __init__
+license = { file="LICENSE" }
+authors = [
+    { name="Fabian Hader", email="f.hader@fz-juelich.de" },
+    { name="Fabian Fuchs", email="f.fuchs@fz-juelich.de" },
+    { name="Karin Havemann", email="k.havemann@fz-juelich.de" },
+    { name="Sarah Fleitmann", email="s.fleitmann@fz-juelich.de" },
+    { name="Jan Vogelbruch", email="j.vogelbruch@fz-juelich.de" },
+]
+description = """\
+    SimCATS-Datasets is a Python package that simplifies the creation and loading of SimCATS datasets. \
+    """
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
+    'Development Status :: 5 - Production/Stable',
+    'Intended Audience :: Science/Research',
+    'Programming Language :: Python',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.7',
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Topic :: Scientific/Engineering',
+    'Typing :: Typed',
+]
+dependencies = [
+    "bezier",
+    "bm3d",
+    "h5py",
+    "hdf5storage",
+    "numpy",
+    "opencv-python",
+    "pandas",
+    "parallelbar",
+    "parse",
+    "scikit-image",
+    "simcats>=1.2.0",
+    "torch",
+    "tqdm",
+    "xarray"
+]
+
+[project.urls]
+homepage = "https://github.com/f-hader/SimCATS-Datasets"
+documentation = "https://simcats-datasets.readthedocs.io"
+source = "https://github.com/f-hader/SimCATS-Datasets"
+tracker = "https://github.com/f-hader/SimCATS-Datasets/issues"
+
+[tool.setuptools.packages.find]
+exclude = [
+    "notebooks*",
+    "docs*",
+] # exclude packages matching these glob patterns (empty by default)

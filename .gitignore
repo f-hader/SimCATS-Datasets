@@ -1,0 +1,28 @@
+# pycharm
+.idea
+
+# vscode
+.vscode
+
+# build package
+*.egg-info
+dist
+build
+
+# python & jupyter caches
+__pycache__
+.ipynb_checkpoints
+
+# temporary & build files in docs
+docs/source/misc
+docs/source/notebooks
+
+# plots / figures
+*.png
+
+# logs
+*.txt
+
+# datasets inside the repository (for example for testing new functions during development)
+*.h5
+*.npy

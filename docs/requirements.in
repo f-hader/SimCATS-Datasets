@@ -1,0 +1,21 @@
+# used to compile requirements.txt with pip-compile requirements.in
+# required for sphinx
+sphinx
+sphinx-rtd-theme
+sphinx-autoapi
+myst-nb
+jupytext
+# required for simcats-datasets
+bezier
+h5py
+hdf5storage
+numpy
+pandas
+parallelbar
+parse
+simcats>=1.2.0
+tqdm
+xarray
+opencv-python
+scikit-image
+bm3d

@@ -16,6 +16,9 @@
   <a href="https://doi.org/10.1109/TQE.2024.3445967">
     <img src="https://img.shields.io/badge/DOI (SimCATS Paper)-10.1109/TQE.2024.3445967-007ec6.svg" alt="DOI Paper"/>
   </a>
+  <a href="https://doi.org/10.5281/zenodo.13862231">
+    <img src="https://img.shields.io/badge/DOI (Code)-10.5281/zenodo.13862231-007ec6.svg" alt="DOI Code"/>
+  </a>
 </div>
 
 # SimCATS-Datasets

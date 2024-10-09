@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "simcats-datasets"
-version = "2.4.0" # also change in docs/source/conf.py and __init__
+version = "2.5.0" # also change in docs/source/conf.py and __init__
 license = { file="LICENSE" }
 authors = [
     { name="Fabian Hader", email="f.hader@fz-juelich.de" },

@@ -7,7 +7,7 @@ import shutil
 project = "SimCATS-Datasets"
 copyright = "2024 Forschungszentrum Jülich GmbH - Central Institute of Engineering, Electronics and Analytics (ZEA) - Electronic Systems (ZEA-2)"
 author = "Fabian Hader, Fabian Fuchs, Karin Havemann, Sarah Fleitmann"
-release = "2.4.0"  # also change in pyproject.toml
+release = "2.5.0"  # also change in pyproject.toml
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

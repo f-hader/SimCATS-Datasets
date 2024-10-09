@@ -13,11 +13,11 @@ from typing import List, Tuple, Union
 
 import h5py
 import numpy as np
-from tqdm import tqdm
 
 
 def load_dataset(file: Union[str, h5py.File],
-                 load_csds=True,
+                 load_csds: bool = True,
+                 load_sensor_scans: bool = False,
                  load_occupations: bool = False,
                  load_tct_masks: bool = False,
                  load_ct_by_dot_masks: bool = False,
@@ -34,12 +34,15 @@ def load_dataset(file: Union[str, h5py.File],
             dataset. If a path is supplied, load_dataset will open the file itself. If you want to do multiple
             consecutive loads from the same file (e.g. for using th PyTorch SimcatsDataset without preloading), consider
             initializing the file object yourself and passing it, to improve the performance.
-        load_csds: Determines if csds should be loaded. Default is True.
+        load_csds: Determines if CSDs should be loaded. A dataset can have either CSDs or sensor scans, but never both.
+            Default is True.
+        load_sensor_scans: Determines if sensor scans should be loaded. A dataset can have either CSDs or sensor scans,
+            but never both. Default is False.
         load_occupations: Determines if occupation data should be loaded. Default is False.
         load_tct_masks: Determines if lead transition masks should be loaded. Default is False.
         load_ct_by_dot_masks: Determines if charge transition labeled by affected dot masks should be loaded. This
             requires that ct_by_dot_masks have been added to the dataset. If a dataset has been created using
-            create_simulated_dataset, these masks can be added afterwards using add_ct_by_dot_masks_to_dataset, mainly
+            create_simulated_dataset, these masks can be added afterward using add_ct_by_dot_masks_to_dataset, mainly
             to avoid recalculating them multiple times (for example for machine learning purposes). Default is False.
         load_line_coords: Determines if lead transition definitions using start and end points should be loaded. Default
             is False.
@@ -56,13 +59,15 @@ def load_dataset(file: Union[str, h5py.File],
 
     Returns:
         namedtuple: The namedtuple can be unpacked like every normal tuple, or instead accessed by field names. \n
-        Depending on what has been enabled, the following data is included in the named tuple: \n
-        - field 'csds': List containing all CSDs as numpy arrays. The list is sorted by the id of the CSDs (if no
-          specific_ids are provided, else the order is given by specific_ids).
+        Depending on what has been enabled, the following data is included in the named tuple (all lists are sorted by
+        the id of the CSDs or sensor_scans if no specific_ids are provided, else the order is given by specific_ids): \n
+        - field 'csds': List containing all CSDs as numpy arrays.
+        - field 'sensor_scans': List containing all sensor scans as numpy arrays.
         - field 'occupations': List containing numpy arrays with occupations.
         - field 'tct_masks': List containing numpy arrays of TCT masks.
         - field 'ct_by_dot_masks': List containing numpy arrays of CT_by_dot masks.
-        - field 'line_coordinates': List containing numpy arrays of line coordinates.
+        - field 'line_coordinates': List containing numpy arrays of line coordinates. Each row of the array specifies
+            the start and end points of one line.
         - field 'line_labels': List containing a list of dictionaries (one dict for each line specified as line
             coordinates).
         - field 'metadata': List containing dictionaries with all metadata (simcats configs) for each CSD.
@@ -72,6 +77,8 @@ def load_dataset(file: Union[str, h5py.File],
     fieldnames = []
     if load_csds:
         fieldnames.append("csds")
+    if load_sensor_scans:
+        fieldnames.append("sensor_scans")
     if load_occupations:
         fieldnames.append("occupations")
     if load_tct_masks:
@@ -86,10 +93,17 @@ def load_dataset(file: Union[str, h5py.File],
         fieldnames.append("metadata")
     if load_ids:
         fieldnames.append("ids")
-    CSDDataset = namedtuple(typename="CSDDataset", field_names=fieldnames)
+    SimcatsDataset = namedtuple(typename="SimcatsDataset", field_names=fieldnames)
 
     # use nullcontext to catch the case where a file is passed instead of the string
     with h5py.File(file, "r") if isinstance(file, str) else nullcontext(file) as _file:
+        # check if the dataset contains csd or sensor_scans
+        if "csds" in _file:
+            csd_dataset = True
+        elif "sensor_scans" in _file:
+            csd_dataset = False
+        else:
+            raise KeyError("The dataset that should be loaded does not contain any csds or sensor_scans!")
         # if only specific ids should be loaded, check if all ids are available
         if specific_ids is not None:
             if isinstance(specific_ids, list) or isinstance(specific_ids, np.ndarray):
@@ -104,18 +118,31 @@ def load_dataset(file: Union[str, h5py.File],
             # Dataset with non-existing specific IDs (which else would only crash as soon as a non-existent ID is
             # requested during training). We can't check this on loading CSDs etc. as it massively slows down loading.
             if specific_ids is not None:
-                if np.min(specific_ids) < 0 or np.max(specific_ids) >= len(_file["csds"]):
-                    msg = "Not all ids specified by 'specific_ids' are available in the dataset!"
-                    raise IndexError(msg)
+                if csd_dataset:
+                    if np.min(specific_ids) < 0 or np.max(specific_ids) >= len(_file["csds"]):
+                        msg = "Not all ids specified by 'specific_ids' are available in the dataset!"
+                        raise IndexError(msg)
+                else:
+                    if np.min(specific_ids) < 0 or np.max(specific_ids) >= len(_file["sensor_scans"]):
+                        msg = "Not all ids specified by 'specific_ids' are available in the dataset!"
+                        raise IndexError(msg)
                 available_ids = specific_ids
             else:
-                available_ids = range(len(_file["csds"]))
+                if csd_dataset:
+                    available_ids = range(len(_file["csds"]))
+                else:
+                    available_ids = range(len(_file["sensor_scans"]))
 
         if load_csds:
             if specific_ids is not None:
                 csds = _file["csds"][specific_ids]
             else:
                 csds = _file["csds"][:]
+        if load_sensor_scans:
+            if specific_ids is not None:
+                sensor_scans = _file["sensor_scans"][specific_ids]
+            else:
+                sensor_scans = _file["sensor_scans"][:]
         if load_occupations:
             if specific_ids is not None:
                 occupations = _file["occupations"][specific_ids]
@@ -155,6 +182,8 @@ def load_dataset(file: Union[str, h5py.File],
     return_data = []
     if load_csds:
         return_data.append(csds)
+    if load_sensor_scans:
+        return_data.append(sensor_scans)
     if load_occupations:
         return_data.append(occupations)
     if load_tct_masks:
@@ -174,4 +203,4 @@ def load_dataset(file: Union[str, h5py.File],
     if specific_ids is not None and undo_sort_ids is not None:
         return_data = [[x[i] for i in undo_sort_ids] for x in return_data]
 
-    return CSDDataset._make(tuple(return_data))
+    return SimcatsDataset._make(tuple(return_data))

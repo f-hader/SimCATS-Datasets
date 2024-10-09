@@ -30,6 +30,13 @@ from simcats_datasets.loading import load_dataset
 from simcats.support_functions import rotate_points
 
 
+# Lists defining which ground truth type is supported for CSD and sensor scan datasets, respectively
+_csd_ground_truths = ["load_zeros_masks", "load_tct_masks", "load_tct_by_dot_masks", "load_idt_masks", "load_ct_masks",
+                      "load_ct_by_dot_masks", "load_tc_region_masks", "load_tc_region_minus_tct_masks",
+                      "load_c_region_masks"]
+_sensor_scan_ground_truths = ["load_zeros_masks", "load_tct_masks"]
+
+
 def load_zeros_masks(file: Union[str, h5py.File],
                      specific_ids: Union[range, List[int], np.ndarray, None] = None,
                      progress_bar: bool = True) -> List[np.ndarray]:

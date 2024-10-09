@@ -28,7 +28,8 @@ class SimcatsDataset(Dataset):
                  ground_truth_preprocessors: Union[List[Union[str, Callable]], None] = None,
                  format_output: Union[Callable, str, None] = None, preload: bool = True,
                  max_concurrent_preloads: int = 100000,
-                 progress_bar: bool = False, ):
+                 progress_bar: bool = False,
+                 sensor_scan_dataset: bool = False,):
         """Initializes an object for providing simcats_datasets data to pytorch.
 
         Args:
@@ -77,8 +78,11 @@ class SimcatsDataset(Dataset):
                 loading them step by step and for example converting the CSDs to float32 with a corresponding data
                 preprocessor. Default is 100,000.
             progress_bar: Determines whether to display a progress bar while loading data. Default is False.
+            sensor_scan_dataset: Determines whether the dataset is a sensor scan dataset (contains sensor scans instead
+                of CSDs). Default is False.
         """
         self.__h5_path = h5_path
+        self.__sensor_scan_dataset = sensor_scan_dataset
         self.__specific_ids = specific_ids
         # set up the load ground truth function. Could be None, function referenced by string, or callable
         if load_ground_truth is None:
@@ -88,6 +92,20 @@ class SimcatsDataset(Dataset):
                 self.__load_ground_truth = getattr(simcats_datasets.loading.load_ground_truth, load_ground_truth)
             else:
                 self.__load_ground_truth = load_ground_truth
+            # check if it is possible to load the desired ground truth from the given dataset
+            try:
+                _ = self.load_ground_truth(file=self.__h5_path, specific_ids=[0], progress_bar=False)
+            except:
+                raise ValueError(
+                    f"The specified ground truth ({self.load_ground_truth.__name__}) can't be loaded for the given "
+                    f"dataset ({self.h5_path}). Please make sure to select a supported ground truth type.\n"
+                    f"Supported ground truth types for CSD datasets created using "
+                    f"simcats_datasets.generation.create_simulated_dataset are:\n"
+                    f"{', '.join(simcats_datasets.loading.load_ground_truth._csd_ground_truths)}\n"
+                    f"Supported ground truth types for sensor scan datasets created using "
+                    f"simcats_datasets.generation.create_simulated_dataset are:\n"
+                    f"{', '.join(simcats_datasets.loading.load_ground_truth._sensor_scan_ground_truths)}"
+                )
         # set up the data preprocessors. Could be None, functions referenced by strings, or callables
         if data_preprocessors is None:
             self.__data_preprocessors = data_preprocessors
@@ -121,31 +139,37 @@ class SimcatsDataset(Dataset):
                 load_dataset(file=h5_file, load_csds=False, load_ids=True, specific_ids=self.specific_ids,
                     progress_bar=self.progress_bar, ).ids)
             # preprocess an exemplary image to get final shape (some preprocessors might adjust the shape)
-            _temp_csd = \
-            load_dataset(file=h5_file, load_csds=True, specific_ids=[0], progress_bar=self.progress_bar, ).csds[0]
+            _temp_measurement = load_dataset(file=h5_file,
+                                      load_csds=not self.__sensor_scan_dataset,
+                                      load_sensor_scans=self.__sensor_scan_dataset,
+                                      specific_ids=[0],
+                                      progress_bar=self.progress_bar, )[0][0]
             if self.data_preprocessors is not None:
                 for processor in self.data_preprocessors:
-                    _temp_csd = processor(_temp_csd)
-            self.__shape = (self.__num_ids, *np.squeeze(_temp_csd).shape)
-            # preload all data if requested
+                    _temp_measurement = processor(_temp_measurement)
+            self.__shape = (self.__num_ids, *np.squeeze(_temp_measurement).shape)
+            # preload all measurements if requested
             if self.preload:
-                self.__csds = []
+                self.__measurements = []
                 self.__ground_truths = []
-                # load and save data, at most max_concurrent_ids at a time
+                # load and save measurements, at most max_concurrent_ids at a time
                 for i in range(math.ceil(self.__num_ids / max_concurrent_preloads)):
                     _ids = range(i * max_concurrent_preloads,
                         np.min([(i + 1) * max_concurrent_preloads, self.__num_ids]))
                     if self.specific_ids is not None:
                         _ids = [self.specific_ids[i] for i in _ids]
                     # load
-                    _temp_csds = [csd for csd in
-                        load_dataset(file=h5_file, specific_ids=_ids, progress_bar=self.progress_bar, ).csds]
-                    # preprocess data
+                    _temp_measurements = [data for data in load_dataset(file=h5_file,
+                                                                load_csds=not self.__sensor_scan_dataset,
+                                                                load_sensor_scans=self.__sensor_scan_dataset,
+                                                                specific_ids=_ids,
+                                                                progress_bar=self.progress_bar, )[0]]
+                    # preprocess measurements
                     if self.data_preprocessors is not None:
                         for processor in self.data_preprocessors:
-                            _temp_csds = processor(_temp_csds)
-                    self.__csds.extend(_temp_csds)
-                    del _temp_csds
+                            _temp_measurements = processor(_temp_measurements)
+                    self.__measurements.extend(_temp_measurements)
+                    del _temp_measurements
                     try:
                         _temp_ground_truths = [gt for gt in
                             self.load_ground_truth(file=h5_file, specific_ids=_ids, progress_bar=self.progress_bar, )]
@@ -161,6 +185,10 @@ class SimcatsDataset(Dataset):
     @property
     def h5_path(self) -> str:
         return self.__h5_path
+
+    @property
+    def sensor_scan_dataset(self) -> bool:
+        return self.__sensor_scan_dataset
 
     @property
     def specific_ids(self) -> Union[range, List[int], np.ndarray, None]:
@@ -196,19 +224,19 @@ class SimcatsDataset(Dataset):
 
     def __len__(self):
         """
-        Returns the number of CSDs in the dataset.
+        Returns the number of measurements in the dataset.
         """
         return self.__num_ids
 
     def __getitem__(self, idx: int):
         """
-        Retrieves a csd and the corresponding ground truth at given index idx.
+        Retrieves a measurement and the corresponding ground truth at given index idx.
 
         Args:
             idx: The id of the csd and ground truth to be returned.
         """
         if self.preload:
-            csd = self.__csds[idx]
+            measurement = self.__measurements[idx]
             try:
                 ground_truth = self.__ground_truths[idx]
             except IndexError:
@@ -220,12 +248,16 @@ class SimcatsDataset(Dataset):
                 self.__h5_file = h5py.File(self.h5_path, mode="r")
             if self.specific_ids is not None:
                 idx = self.specific_ids[idx]
-            # load data
-            csd = load_dataset(file=self.__h5_file, specific_ids=[idx], progress_bar=self.progress_bar).csds[0]
-            # preprocess data
+            # load measurement
+            measurement = load_dataset(file=self.__h5_file,
+                                load_csds=not self.__sensor_scan_dataset,
+                                load_sensor_scans=self.__sensor_scan_dataset,
+                                specific_ids=[idx],
+                                progress_bar=self.progress_bar)[0][0]
+            # preprocess measurement
             if self.data_preprocessors is not None:
                 for processor in self.data_preprocessors:
-                    csd = processor(csd)
+                    measurement = processor(measurement)
             # load ground truth
             try:
                 ground_truth = \
@@ -236,7 +268,7 @@ class SimcatsDataset(Dataset):
                         ground_truth = processor(ground_truth)
             except TypeError:
                 ground_truth = None
-        return self.format_output(csd=csd, ground_truth=ground_truth, idx=idx)
+        return self.format_output(measurement=measurement, ground_truth=ground_truth, idx=idx)
 
     def __repr__(self):
         return (f"{self.__class__.__name__}(\n"
@@ -247,7 +279,8 @@ class SimcatsDataset(Dataset):
                 f"\tground_truth_preprocessors=[{[', '.join([func.__name__ for func in self.ground_truth_preprocessors]) if self.ground_truth_preprocessors is not None else None][0]}],\n"
                 f"\tformat_output={self.format_output.__name__},\n"
                 f"\tpreload={self.preload},\n"
-                f"\tprogress_bar={self.progress_bar}\n"
+                f"\tprogress_bar={self.progress_bar},\n"
+                f"\tsensor_scan_dataset={self.sensor_scan_dataset}\n"
                 f")")
 
     def __del__(self):
@@ -264,7 +297,8 @@ class SimcatsConcatDataset(ConcatDataset):
                  ground_truth_preprocessors: Union[List[Union[str, Callable]], None] = None,
                  format_output: Union[Callable, str, None] = None, preload: bool = True,
                  max_concurrent_preloads: int = 100000,
-                 progress_bar: bool = False, ):
+                 progress_bar: bool = False,
+                 sensor_scan_dataset: bool = False,):
         """Initializes an object for providing concatenated simcats_datasets data to pytorch.
 
         Args:
@@ -313,6 +347,8 @@ class SimcatsConcatDataset(ConcatDataset):
                 loading them step by step and for example converting the CSDs to float32 with a corresponding data
                 preprocessor. Default is 100.000.
             progress_bar: Determines whether to display a progress bar while loading data. Default is False.
+            sensor_scan_dataset: Determines whether the datasets are sensor scan datasets (contain sensor scans instead
+                of CSDs). Default is False.
         """
         _datasets = list()
         if specific_ids is not None and len(specific_ids) != len(h5_paths):
@@ -328,9 +364,10 @@ class SimcatsConcatDataset(ConcatDataset):
                                data_preprocessors=data_preprocessors,
                                ground_truth_preprocessors=ground_truth_preprocessors, format_output=format_output,
                                preload=preload, max_concurrent_preloads=max_concurrent_preloads,
-                               progress_bar=progress_bar))
+                               progress_bar=progress_bar, sensor_scan_dataset=sensor_scan_dataset))
         super().__init__(_datasets)
         self.__h5_paths = h5_paths
+        self.__sensor_scan_dataset = sensor_scan_dataset
         self.__specific_ids = specific_ids
         # set up the load ground truth function. Could be None, function referenced by string, or callable
         if load_ground_truth is None:
@@ -373,13 +410,17 @@ class SimcatsConcatDataset(ConcatDataset):
             if shape is None:
                 shape = dataset.shape[1:]
             elif dataset.shape[1:] != shape:
-                raise ValueError(f"The shape of the SimcatsDataset CSDs should be identical but found shapes "
+                raise ValueError(f"The shape of the SimcatsDataset Measurements should be identical but found shapes "
                                  f"{[dataset.shape[1:] for dataset in _datasets]}")
         self.__shape = (len(self), *shape)
 
     @property
     def h5_paths(self) -> List[str]:
         return self.__h5_paths
+
+    @property
+    def sensor_scan_dataset(self) -> bool:
+        return self.__sensor_scan_dataset
 
     @property
     def specific_ids(self) -> Union[List[Union[range, List[int], np.ndarray, None]], None]:
@@ -422,5 +463,6 @@ class SimcatsConcatDataset(ConcatDataset):
                 f"\tground_truth_preprocessors=[{[', '.join([func.__name__ for func in self.ground_truth_preprocessors]) if self.ground_truth_preprocessors is not None else None][0]}],\n"
                 f"\tformat_output={self.format_output.__name__},\n"
                 f"\tpreload={self.preload},\n"
-                f"\tprogress_bar={self.progress_bar}\n"
+                f"\tprogress_bar={self.progress_bar},\n"
+                f"\tsensor_scan_dataset={self.sensor_scan_dataset},\n"
                 f")")
